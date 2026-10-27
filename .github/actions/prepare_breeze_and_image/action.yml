@@ -83,6 +83,7 @@ runs:
         Restore ${{ inputs.image-type }} docker image ${{ inputs.platform }}:${{ inputs.python }}
         ${{ inputs.image-stash-ref != '' && format('built for ref {0}', inputs.image-stash-ref) || '' }}
       uses: ./.github/actions/stash-restore
+      id: restore-image
       with:
         key: "${{ inputs.image-type }}-image-save-v3-${{ inputs.platform }}-${{ inputs.python }}\
           ${{ inputs.image-stash-ref != '' && format('-{0}', inputs.image-stash-ref) || '' }}"
@@ -92,10 +93,34 @@ runs:
         only-current-branch: 'true'
         fail-on-download: 'true'
     - name: "Load ${{ inputs.image-type }} image ${{ inputs.platform }}:${{ inputs.python }}"
+      id: load-image
       env:
         PLATFORM: ${{ inputs.platform }}
         PYTHON: ${{ inputs.python }}
         IMAGE_TYPE: ${{ inputs.image-type }}
-      run: >
-        breeze ${IMAGE_TYPE}-image load --platform "${PLATFORM}" --python "${PYTHON}" --image-file-dir "/mnt"
+      run: |
+        started_at=$(date +%s)
+        breeze "${IMAGE_TYPE}"-image load --platform "${PLATFORM}" --python "${PYTHON}" \
+          --image-file-dir "/mnt"
+        echo "load-seconds=$(( $(date +%s) - started_at ))" >> "${GITHUB_OUTPUT}"
       shell: bash
+    - name: "Report image hand-off metrics"
+      shell: bash
+      env:
+        IMAGE_TYPE: ${{ inputs.image-type }}
+        PYTHON: ${{ inputs.python }}
+        RESTORE_SECONDS: ${{ steps.restore-image.outputs.restore-seconds }}
+        STORAGE_KIND: ${{ steps.restore-image.outputs.storage-kind }}
+        STASH_HIT: ${{ steps.restore-image.outputs.stash-hit }}
+        LOAD_SECONDS: ${{ steps.load-image.outputs.load-seconds }}
+      run: |
+        image_file=$(compgen -G "/mnt/${IMAGE_TYPE}-image-save-*-${PYTHON}.tar" | head -n 1)
+        image_bytes=$(stat --printf='%s' "${image_file}")
+        {
+          echo "### CI image hand-off"
+          echo "- Storage: ${STORAGE_KIND}"
+          echo "- Stash hit: ${STASH_HIT}"
+          echo "- Restore: ${RESTORE_SECONDS}s"
+          echo "- Archive size: ${image_bytes} bytes"
+          echo "- Docker load: ${LOAD_SECONDS}s"
+        } >> "${GITHUB_STEP_SUMMARY}"
