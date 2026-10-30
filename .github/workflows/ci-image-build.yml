@@ -357,6 +357,7 @@ jobs:
             echo "- zstd compression: ${compression_seconds}s"
             echo "- Uncompressed archive: ${uncompressed_bytes} bytes"
             echo "- Compressed archive: ${compressed_bytes} bytes"
+          } >> "${GITHUB_STEP_SUMMARY}"
         shell: bash
         if: inputs.upload-image-artifact == 'true' && steps.stashed-image.outputs.reusable != 'true'
       - name: "Stash CI docker image ${{ env.PYTHON_MAJOR_MINOR_VERSION }}"
