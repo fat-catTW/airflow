@@ -50,9 +50,19 @@ outputs:
   stash-hit:
     description: "'true' if a stash was restored, 'false' otherwise."
     value: ${{ steps.s3.outputs.stash-hit || steps.artifact.outputs.stash-hit }}
+  restore-seconds:
+    description: Seconds spent restoring the stash, including its transport and extraction.
+    value: ${{ steps.metrics.outputs.restore-seconds }}
+  storage-kind:
+    description: Storage backend used to restore the stash.
+    value: ${{ steps.metrics.outputs.storage-kind }}
 runs:
   using: 'composite'
   steps:
+    - name: "Start restore timer"
+      id: timing
+      shell: bash
+      run: echo "started-at=$(date +%s)" >> "${GITHUB_OUTPUT}"
     - name: "Restore stash from GitHub artifacts"
       id: artifact
       if: runner.environment != 'self-hosted'
@@ -135,3 +145,15 @@ runs:
         fi
         echo "stash-hit=true" >> "${GITHUB_OUTPUT}"
         echo "Restored stash '${STASH_KEY}' from ${object}"
+    - name: "Report restore metrics"
+      id: metrics
+      shell: bash
+      env:
+        STARTED_AT: ${{ steps.timing.outputs.started-at }}
+      run: |
+        echo "restore-seconds=$(( $(date +%s) - STARTED_AT ))" >> "${GITHUB_OUTPUT}"
+        if [[ "${RUNNER_ENVIRONMENT}" == "self-hosted" ]]; then
+          echo "storage-kind=s3" >> "${GITHUB_OUTPUT}"
+        else
+          echo "storage-kind=github-artifact" >> "${GITHUB_OUTPUT}"
+        fi
